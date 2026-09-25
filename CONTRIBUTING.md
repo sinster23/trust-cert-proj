@@ -1,4 +1,4 @@
-# Contributing to TrustCert
+# Contributing to Credence
 
 ## General Rule
 

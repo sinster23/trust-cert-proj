@@ -1,6 +1,6 @@
-# TrustCert
+# Credence
 
-TrustCert is a secure academic certificate authentication and verification system
+Credence is a secure academic certificate authentication and verification system
 that uses cryptographic techniques to protect certificate integrity and establish
 trusted certificate issuance.
 
@@ -38,7 +38,7 @@ security features.
 ## Repository Structure
 
 ```text
-trustcert/
+Credence/
 ├── backend/
 ├── frontend/
 ├── docs/
