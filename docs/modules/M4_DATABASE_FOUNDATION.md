@@ -1,5 +1,27 @@
 # M4 — Database Foundation
 
+## Implementation status and usage
+
+M4 provides an asynchronous MongoDB persistence boundary for User records. It does not implement authentication, password hashing, or any certificate operations.
+
+### Configuration and lifecycle
+
+Set `MONGODB_URI` and `MONGODB_DATABASE` in the backend process environment. The committed `backend/.env.example` contains placeholders only. Create one `DatabaseManager` for the FastAPI application lifespan, `await manager.connect()` during startup, store it on `app.state`, and `await manager.close()` during shutdown. A request dependency can call `get_database(app.state.database_manager)` and pass the result into `UserRepository`. The manager reuses a single client and pings MongoDB during startup.
+
+### User and repository contract
+
+`User` contains only `id` (UUID), `email`, `password_hash`, `is_active`, `created_at`, and `updated_at`. Email is stripped and Unicode case-folded before storage and lookup. Timestamps must be timezone-aware and are normalized to UTC. M4 accepts a password hash only; hashing and verification belong to the authentication module.
+
+`UserRepository(database)` exposes `create_user(user)`, `find_by_email(email)`, and `find_by_id(id)`. Missing users raise `UserNotFoundError`; malformed inputs raise `InvalidDatabaseOperationError`; duplicates raise `DuplicateDataError`. Database exceptions are wrapped in sanitized application exceptions. On startup, call `await repository.ensure_indexes()` to ensure the unique email index; creation also ensures that index before inserting. The unique MongoDB index on normalized `email` is the definitive concurrency-safe uniqueness constraint.
+
+### Tests
+
+From `backend`, install `python -m pip install -r requirements.txt`, then run `python -m pytest tests/database`. These tests use an in-memory collection fake and mock the connection client; they make no connection to or changes in a shared or production database. A real deployment must provide a separately provisioned MongoDB database and credentials through environment variables.
+
+### Security and integration
+
+The frontend must communicate only with FastAPI. M1 consumes the repository methods and M4 exceptions, without MongoDB queries or lifecycle management. Never pass plaintext passwords to M4 or expose the original chained database exception to API callers. Keep credentials out of `.env.example` and source control.
+
 **Project:** Credence  
 **Phase:** Phase 1 — Secure Certificate Issuance Foundation  
 **Module:** M4 — Database Foundation  
