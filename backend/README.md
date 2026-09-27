@@ -1,8 +1,3 @@
-Yes, exactly. The backend README should be a **small developer quick-start**, not an architecture document. M1 can then append/update it when authentication is added.
-
-I'd use this:
-
-```markdown
 # Credence Backend
 
 Backend API for the Credence project, built with **FastAPI** and **MongoDB**.
