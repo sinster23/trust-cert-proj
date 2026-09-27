@@ -1,12 +1,3 @@
-Absolutely. Since **M4 is already completed** and you're now setting up the shared FastAPI foundation before M1 starts, I'd update both READMEs like this.
-
-The important addition is that **M1 owns keeping its README and `requirements.txt` updated as implementation progresses**, so the repository stays understandable for the next members.
-
----
-
-# `backend/app/auth/README.md` / M1 README
-
-```markdown
 # M1 — Authentication Module
 
 ## 1. Objective
