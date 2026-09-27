@@ -1,0 +1,6 @@
+# Async MongoDB driver used by M4.
+pymongo>=4.13,<5
+
+# M4 repository tests.
+pytest>=8,<9
+pytest-asyncio>=0.24,<2
