@@ -1,12 +1,14 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
 
+load_dotenv()
+
+from app.auth.router import router as auth_router  # M1
 from app.database.connection import DatabaseManager
 from app.database.repositories.user_repository import UserRepository
 
-from dotenv import load_dotenv
-load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,6 +21,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Credence API", lifespan=lifespan)
+
+app.include_router(auth_router)  # M1
+
 
 @app.get("/")
 def root():
