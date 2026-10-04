@@ -1,5 +1,3 @@
-"""User persistence model. Password handling belongs to the caller."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -21,10 +19,20 @@ def normalize_email(email: str) -> str:
     return normalized
 
 
+def normalize_google_sub(google_sub: str) -> str:
+    """Google `sub` values are opaque and case-sensitive: only trim whitespace."""
+    if not isinstance(google_sub, str):
+        raise ValueError("google_sub must be a string")
+    normalized = google_sub.strip()
+    if not normalized:
+        raise ValueError("google_sub must be a non-empty string")
+    return normalized
+
+
 @dataclass(frozen=True, slots=True)
 class User:
     email: str
-    password_hash: str
+    google_sub: str
     id: UUID = field(default_factory=uuid4)
     is_active: bool = True
     created_at: datetime = field(default_factory=utc_now)
@@ -32,8 +40,7 @@ class User:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "email", normalize_email(self.email))
-        if not isinstance(self.password_hash, str) or not self.password_hash.strip():
-            raise ValueError("password_hash is required")
+        object.__setattr__(self, "google_sub", normalize_google_sub(self.google_sub))
         if not isinstance(self.id, UUID):
             raise ValueError("id must be a UUID")
         if not isinstance(self.is_active, bool):
@@ -48,7 +55,7 @@ class User:
         return {
             "_id": str(self.id),
             "email": self.email,
-            "password_hash": self.password_hash,
+            "google_sub": self.google_sub,
             "is_active": self.is_active,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -59,7 +66,7 @@ class User:
         return cls(
             id=UUID(document["_id"]),
             email=document["email"],
-            password_hash=document["password_hash"],
+            google_sub=document["google_sub"],
             is_active=document["is_active"],
             created_at=document["created_at"].replace(tzinfo=timezone.utc)
             if document["created_at"].tzinfo is None else document["created_at"],
