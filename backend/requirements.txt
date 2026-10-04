@@ -1,16 +1,18 @@
-# Async MongoDB driver used by M4.
+# Web framework
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-dotenv>=1.0,<2
+
+# M4: async MongoDB driver
 pymongo>=4.13,<5
+certifi
 
-# M4 repository tests.
-pytest>=8,<9
-pytest-asyncio>=0.24,<2
-
+# M1: authentication
 google-auth>=2.29,<3
 requests>=2.31,<3
 PyJWT>=2.8,<3
 
-#others
-certifi
-dotenv
-fastapi
-uvicorn[standard]
+# Tests
+pytest>=8,<9
+pytest-asyncio>=0.24,<2
+httpx>=0.27,<1

@@ -2,26 +2,17 @@
 
     Google identity -> validate -> find/create Credence user (via M4) -> issue JWT
 
-Google `sub` -> Credence user mapping
--------------------------------------
-The M4 user model has no field for the Google `sub`, and M4 must not be changed.
-To keep `sub` (not email) as the permanent external identity key, the Credence
-user id is derived deterministically from it:
-
-    user_id = uuid5(CREDENCE_GOOGLE_NAMESPACE, "google:" + sub)
-
-Lookups therefore use ``UserRepository.find_by_id``. The same Google account
-always maps to the same Credence user, and an email change on the Google side
-does not create a second user. If M4 later gains a dedicated `google_sub`
-field, only `google_sub_to_user_id` and the lookup in `_get_or_create_user`
-need to change.
+Identity
+--------
+Google's stable `sub` is the permanent external identity and is stored on the
+M4 user as `google_sub` (unique index). Users are looked up with
+``UserRepository.find_by_google_sub``; email is never the identity key.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from uuid import UUID, uuid5
 
 from starlette.concurrency import run_in_threadpool
 
@@ -44,15 +35,6 @@ from .security import (
 
 logger = logging.getLogger(__name__)
 
-# Fixed namespace for the sub -> user id mapping. NOT a secret, and must never
-# change: changing it would map every Google account to a different user.
-CREDENCE_GOOGLE_NAMESPACE = UUID("6f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f")
-
-# M4's User requires a password_hash, but Google users have no password.
-# This marker is not a valid hash for any password scheme, so password
-# login can never succeed for these accounts.
-UNUSABLE_PASSWORD_HASH = "!google-oauth-no-password"
-
 
 class ServiceUnavailableError(AuthError):
     """A dependency (database) needed for authentication is unavailable."""
@@ -67,11 +49,6 @@ class AuthResult:
     access_token: str
     expires_in: int
     user: User
-
-
-def google_sub_to_user_id(sub: str) -> UUID:
-    """Deterministic, stable Credence user id for a Google `sub`."""
-    return uuid5(CREDENCE_GOOGLE_NAMESPACE, f"google:{sub}")
 
 
 class AuthService:
@@ -100,9 +77,8 @@ class AuthService:
             raise InvalidGoogleTokenError("Invalid Google credential") from exc
 
     async def _get_or_create_user(self, identity: GoogleIdentity) -> User:
-        user_id = google_sub_to_user_id(identity.sub)
         try:
-            return await self._repository.find_by_id(user_id)
+            return await self._repository.find_by_google_sub(identity.sub)
         except UserNotFoundError:
             pass
         except DatabaseUnavailableError as exc:
@@ -113,18 +89,14 @@ class AuthService:
 
         # First login: the user is built ONLY from validated Google claims.
         try:
-            new_user = User(
-                id=user_id,
-                email=identity.email,
-                password_hash=UNUSABLE_PASSWORD_HASH,
-            )
+            new_user = User(email=identity.email, google_sub=identity.sub)
             return await self._repository.create_user(new_user)
         except DuplicateDataError:
             # Either a concurrent first login created this user (fine), or the
             # email already belongs to a different Credence user (not linked
             # automatically: email is not the identity key).
             try:
-                return await self._repository.find_by_id(user_id)
+                return await self._repository.find_by_google_sub(identity.sub)
             except UserNotFoundError as exc:
                 logger.warning("Email already registered to a different Credence user")
                 raise AccountUnavailableError("Account is not available") from exc

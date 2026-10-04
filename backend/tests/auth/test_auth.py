@@ -31,12 +31,7 @@ from app.auth.security import (
     get_auth_settings,
     verify_google_id_token,
 )
-from app.auth.service import (
-    UNUSABLE_PASSWORD_HASH,
-    AccountUnavailableError,
-    AuthService,
-    google_sub_to_user_id,
-)
+from app.auth.service import AccountUnavailableError, AuthService
 from app.database.exceptions import (
     DuplicateDataError,
     InvalidDatabaseOperationError,
@@ -93,9 +88,21 @@ class FakeUserRepository:
                 return user
         raise UserNotFoundError("User was not found")
 
+    async def find_by_google_sub(self, google_sub):
+        if not isinstance(google_sub, str) or not google_sub.strip():
+            raise InvalidDatabaseOperationError("Google account identifier is invalid")
+        for user in self.users.values():
+            if user.google_sub == google_sub.strip():
+                return user
+        raise UserNotFoundError("User was not found")
+
     async def create_user(self, user):
-        if str(user.id) in self.users or any(u.email == user.email for u in self.users.values()):
-            raise DuplicateDataError("A user with this email already exists")
+        if (
+            str(user.id) in self.users
+            or any(u.email == user.email for u in self.users.values())
+            or any(u.google_sub == user.google_sub for u in self.users.values())
+        ):
+            raise DuplicateDataError("A user with this email or Google account already exists")
         self.users[str(user.id)] = user
         return user
 
@@ -227,8 +234,8 @@ class TestUserHandling:
         result = asyncio.run(AuthService(repo, settings).authenticate_with_google("tok"))
         assert len(repo.users) == 1
         assert result.user.email == f"student@{DOMAIN}"
-        assert result.user.password_hash == UNUSABLE_PASSWORD_HASH
-        assert result.user.id == google_sub_to_user_id("1234567890")
+        assert result.user.google_sub == "1234567890"
+        assert not hasattr(result.user, "password_hash")
 
     def test_existing_user_login_does_not_duplicate(self, monkeypatch, repo, settings):
         mock_service_identity(monkeypatch)
@@ -236,6 +243,30 @@ class TestUserHandling:
         first = asyncio.run(svc.authenticate_with_google("tok"))
         second = asyncio.run(svc.authenticate_with_google("tok"))
         assert first.user.id == second.user.id
+        assert len(repo.users) == 1
+
+    def test_concurrent_first_login_returns_the_user_created_by_the_other_request(
+        self, monkeypatch, repo, settings
+    ):
+        mock_service_identity(monkeypatch)
+        winner = User(email=f"student@{DOMAIN}", google_sub="1234567890")
+        original_find = repo.find_by_google_sub
+        calls = {"n": 0}
+
+        async def racing_find(sub):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise UserNotFoundError("User was not found")
+            return await original_find(sub)
+
+        async def racing_create(user):
+            repo.users[str(winner.id)] = winner  # the other request wins the race
+            raise DuplicateDataError("duplicate")
+
+        monkeypatch.setattr(repo, "find_by_google_sub", racing_find)
+        monkeypatch.setattr(repo, "create_user", racing_create)
+        result = asyncio.run(AuthService(repo, settings).authenticate_with_google("tok"))
+        assert result.user.id == winner.id
         assert len(repo.users) == 1
 
     def test_sub_maps_to_same_user_even_if_email_changes(self, monkeypatch, repo, settings):
@@ -254,10 +285,11 @@ class TestUserHandling:
         mock_service_identity(monkeypatch, sub="sub-B", email=f"b@{DOMAIN}")
         b = asyncio.run(svc.authenticate_with_google("tok"))
         assert a.user.id != b.user.id
-        assert google_sub_to_user_id("sub-A") != google_sub_to_user_id("sub-B")
+        assert a.user.google_sub == "sub-A"
+        assert b.user.google_sub == "sub-B"
 
     def test_email_owned_by_other_user_is_not_linked(self, monkeypatch, repo, settings):
-        other = User(email=f"student@{DOMAIN}", password_hash="hash")
+        other = User(email=f"student@{DOMAIN}", google_sub="someone-elses-sub")
         repo.users[str(other.id)] = other
         mock_service_identity(monkeypatch, sub="brand-new-sub")
         with pytest.raises(AccountUnavailableError):
@@ -265,10 +297,8 @@ class TestUserHandling:
         assert len(repo.users) == 1
 
     def test_inactive_user_cannot_login(self, monkeypatch, repo, settings):
-        uid = google_sub_to_user_id("1234567890")
-        repo.users[str(uid)] = User(
-            id=uid, email=f"student@{DOMAIN}", password_hash=UNUSABLE_PASSWORD_HASH, is_active=False
-        )
+        inactive = User(email=f"student@{DOMAIN}", google_sub="1234567890", is_active=False)
+        repo.users[str(inactive.id)] = inactive
         mock_service_identity(monkeypatch)
         with pytest.raises(AccountUnavailableError):
             asyncio.run(AuthService(repo, settings).authenticate_with_google("tok"))
@@ -368,7 +398,7 @@ class TestDependencyAndEndpoints:
         assert response.status_code == 401
 
     def test_inactive_user_token_rejected(self, client, repo):
-        user = User(email=f"gone@{DOMAIN}", password_hash="h", is_active=False)
+        user = User(email=f"gone@{DOMAIN}", google_sub="sub-gone", is_active=False)
         repo.users[str(user.id)] = user
         token = forge_jwt(sub=str(user.id))
         response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})

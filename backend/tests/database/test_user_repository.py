@@ -66,21 +66,21 @@ def repository(database):
 @pytest.mark.asyncio
 async def test_user_creation_persists_required_data_and_unique_index(repository, database):
     now = datetime(2025, 1, 2, tzinfo=timezone.utc)
-    user = User(email="  ALICE@Example.COM ", password_hash="$argon2id$hash", created_at=now, updated_at=now)
+    user = User(email="  ALICE@Example.COM ", google_sub="google-sub-1", created_at=now, updated_at=now)
     result = await repository.create_user(user)
     stored = database.collection.documents[str(user.id)]
     assert result.id == user.id
-    assert set(stored) == {"_id", "email", "password_hash", "is_active", "created_at", "updated_at"}
+    assert set(stored) == {"_id", "email", "google_sub", "is_active", "created_at", "updated_at"}
     assert stored["email"] == "alice@example.com"
-    assert stored["password_hash"] == "$argon2id$hash"
+    assert stored["google_sub"] == "google-sub-1"
     assert "password" not in stored
-    assert database.collection.index_args[0] == [("email", 1)]
+    assert database.collection.index_args[0] == [("google_sub", 1)]
     assert database.collection.index_args[1]["unique"] is True
 
 
 @pytest.mark.asyncio
 async def test_email_normalization_and_id_retrieval(repository):
-    user = User(email="Alice@Example.com", password_hash="hash")
+    user = User(email="Alice@Example.com", google_sub="google-sub-1")
     await repository.create_user(user)
     assert await repository.find_by_email(" alice@example.COM ") == user
     assert await repository.find_by_id(user.id) == user
@@ -89,9 +89,9 @@ async def test_email_normalization_and_id_retrieval(repository):
 
 @pytest.mark.asyncio
 async def test_duplicate_email_rejected(repository):
-    await repository.create_user(User(email="alice@example.com", password_hash="hash1"))
+    await repository.create_user(User(email="alice@example.com", google_sub="google-sub-1"))
     with pytest.raises(DuplicateDataError) as error:
-        await repository.create_user(User(email=" ALICE@example.com ", password_hash="hash2"))
+        await repository.create_user(User(email=" ALICE@example.com ", google_sub="google-sub-2"))
     assert "private mongo detail" not in str(error.value)
 
 
