@@ -580,3 +580,35 @@ The developer may choose:
 provided the requirements and module boundaries are maintained.
 
 Any change affecting M1, M3, M4, shared models, or shared API contracts must be discussed with the integration lead first.
+---
+
+## Implementation status (current state)
+
+**Done (backend/app/authorization/):** roles and permissions (`permissions.py`), grant/revoke/list/bootstrap logic (`service.py`), `require_permission` / `require_role` dependencies (`dependencies.py`), endpoints (`router.py`), models (`schemas.py`). Router is included in `app/main.py`.
+
+**Endpoints**
+
+| Method | Path | Who |
+|---|---|---|
+| GET | `/authorization/me` | any authenticated user: own role + permissions |
+| GET | `/authorization/users?role=&skip=&limit=` | `user:list` (ADMIN) |
+| PUT | `/authorization/users/{user_id}/role` | ADMIN; body `{"role": "STUDENT\|ISSUER\|ADMIN"}` |
+
+**Using it from other modules**
+
+```python
+from app.authorization import require_permission, Permission
+
+@router.post("/certificates")
+async def create(user=Depends(require_permission(Permission.CERTIFICATE_ISSUE))): ...
+```
+
+**Rules enforced:** one role per user; missing `role` = STUDENT; unknown stored role = no permissions; nobody changes their own role; touching ADMIN needs `admin:manage`, otherwise `issuer:manage`; no-op changes and grants to inactive users are rejected; the last admin cannot be demoted. ADMIN does not hold issuing permissions (least privilege).
+
+**M4 support (implemented in M4 as part of this branch):** `User.role` (default `"STUDENT"`, legacy documents without the field read as STUDENT), `update_role(user_id, role)`, `list_users(*, role, skip, limit)` and `count_by_role(role)`, plus a non-unique `role` index. Tests: `tests/database/test_user_roles.py`, which also runs M2's service against the real `UserRepository`. Known limitation: the last-admin check is check-then-update, not atomic.
+
+**First admin:** `python -m scripts.bootstrap_admin <email>` from `backend/`. The user must have logged in once; refuses to run if an admin already exists. Bootstrap mechanism still to be confirmed with the integration lead.
+
+**Tests:** `python -m pytest tests/authorization` (M1's real JWT code is used for authentication).
+
+**Not yet done:** persistent audit trail of role changes (currently logged only).

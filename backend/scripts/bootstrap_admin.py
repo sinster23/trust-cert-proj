@@ -4,8 +4,7 @@ Usage, from backend/ (user must have logged in via Google once):
 
     python -m scripts.bootstrap_admin someone@institute.edu
 
-Refuses to run if an administrator already exists. Requires the M4 role
-methods (update_role / count_by_role) to be available.
+Refuses to run if an administrator already exists.
 """
 
 from __future__ import annotations

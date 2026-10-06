@@ -10,9 +10,19 @@ Set `MONGODB_URI` and `MONGODB_DATABASE` in the backend process environment. The
 
 ### User and repository contract
 
-`User` contains only `id` (UUID), `email`, `password_hash`, `is_active`, `created_at`, and `updated_at`. Email is stripped and Unicode case-folded before storage and lookup. Timestamps must be timezone-aware and are normalized to UTC. M4 accepts a password hash only; hashing and verification belong to the authentication module.
+`User` contains `id` (UUID), `email`, `google_sub` (Google's stable account id, added for M1; the `password_hash` field was removed because login is Google-only), `is_active`, `role`, `created_at`, and `updated_at`. Email is stripped and Unicode case-folded before storage and lookup. Timestamps must be timezone-aware and are normalized to UTC.
 
-`UserRepository(database)` exposes `create_user(user)`, `find_by_email(email)`, and `find_by_id(id)`. Missing users raise `UserNotFoundError`; malformed inputs raise `InvalidDatabaseOperationError`; duplicates raise `DuplicateDataError`. Database exceptions are wrapped in sanitized application exceptions. On startup, call `await repository.ensure_indexes()` to ensure the unique email index; creation also ensures that index before inserting. The unique MongoDB index on normalized `email` is the definitive concurrency-safe uniqueness constraint.
+`role` is a plain string, default `"STUDENT"`, added for M2. M4 only validates its shape (an upper-case identifier such as `STUDENT`; non-strings are rejected, which also blocks query-operator injection). Which roles exist and who may change them is decided by M2; M4 never imports M2. Documents stored before roles existed have no `role` field and are treated as `STUDENT` when read, listed and counted.
+
+`UserRepository(database)` exposes `create_user(user)`, `find_by_email(email)`, `find_by_id(id)`, `find_by_google_sub(sub)` and, for M2:
+
+- `update_role(user_id, role) -> User`: atomic single-document update of `role` (and `updated_at`); returns the updated user.
+- `list_users(*, role=None, skip=0, limit=50) -> list[User]`: oldest first, optional role filter; `skip >= 0` and `1 <= limit <= 100` (`MAX_PAGE_SIZE`).
+- `count_by_role(role) -> int`.
+
+Missing users raise `UserNotFoundError`; malformed inputs (bad id, role, skip/limit) raise `InvalidDatabaseOperationError`; duplicates raise `DuplicateDataError`. Database exceptions are wrapped in sanitized application exceptions. On startup, call `await repository.ensure_indexes()` to ensure the unique email and Google-sub indexes and a non-unique role index. A stored role that fails validation is treated as corrupt data (`DatabaseOperationError`, fails closed).
+
+Known limitation: `count_by_role` followed by `update_role` (M2's "last admin" check) is not atomic, so two concurrent demotions could in theory both pass. Closing that needs a MongoDB transaction or a dedicated guard document.
 
 ### Tests
 

@@ -70,7 +70,8 @@ async def test_user_creation_persists_required_data_and_unique_index(repository,
     result = await repository.create_user(user)
     stored = database.collection.documents[str(user.id)]
     assert result.id == user.id
-    assert set(stored) == {"_id", "email", "google_sub", "is_active", "created_at", "updated_at"}
+    assert set(stored) == {"_id", "email", "google_sub", "is_active", "role", "created_at", "updated_at"}
+    assert stored["role"] == "STUDENT"
     assert stored["email"] == "alice@example.com"
     assert stored["google_sub"] == "google-sub-1"
     assert "password" not in stored
