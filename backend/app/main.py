@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Request
 load_dotenv()
 
 from app.auth.router import router as auth_router  # M1
+from app.authorization.router import router as authorization_router  # M2
 from app.database.connection import DatabaseManager
 from app.database.repositories.user_repository import UserRepository
 
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Credence API", lifespan=lifespan)
 
 app.include_router(auth_router)  # M1
+app.include_router(authorization_router)  # M2
 
 
 @app.get("/")
