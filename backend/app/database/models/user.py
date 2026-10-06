@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -29,6 +30,23 @@ def normalize_google_sub(google_sub: str) -> str:
     return normalized
 
 
+# M4 stores the role as an opaque, validated string. The meaning of each role
+# (and which values are allowed) belongs to M2; M4 must not import M2.
+DEFAULT_ROLE = "STUDENT"
+_ROLE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{0,31}$")
+
+
+def normalize_role(role: str) -> str:
+    """Accept only a plain string such as ``STUDENT``; never trims or case-folds.
+
+    Rejecting non-strings also stops query-operator injection (for example a
+    ``{"$ne": ...}`` dict) from reaching MongoDB filters.
+    """
+    if not isinstance(role, str) or not _ROLE_PATTERN.fullmatch(role):
+        raise ValueError("role must be an upper-case identifier such as STUDENT")
+    return role
+
+
 @dataclass(frozen=True, slots=True)
 class User:
     email: str
@@ -37,6 +55,7 @@ class User:
     is_active: bool = True
     created_at: datetime = field(default_factory=utc_now)
     updated_at: datetime = field(default_factory=utc_now)
+    role: str = DEFAULT_ROLE
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "email", normalize_email(self.email))
@@ -45,6 +64,7 @@ class User:
             raise ValueError("id must be a UUID")
         if not isinstance(self.is_active, bool):
             raise ValueError("is_active must be a boolean")
+        object.__setattr__(self, "role", normalize_role(self.role))
         for name in ("created_at", "updated_at"):
             value = getattr(self, name)
             if value.tzinfo is None or value.utcoffset() is None:
@@ -57,6 +77,7 @@ class User:
             "email": self.email,
             "google_sub": self.google_sub,
             "is_active": self.is_active,
+            "role": self.role,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -68,6 +89,8 @@ class User:
             email=document["email"],
             google_sub=document["google_sub"],
             is_active=document["is_active"],
+            # Documents written before roles existed have no field: STUDENT.
+            role=document.get("role", DEFAULT_ROLE),
             created_at=document["created_at"].replace(tzinfo=timezone.utc)
             if document["created_at"].tzinfo is None else document["created_at"],
             updated_at=document["updated_at"].replace(tzinfo=timezone.utc)

@@ -72,10 +72,19 @@ It currently provides:
 - Email normalization
 - Duplicate-email protection
 - Database error handling
+- User roles: `role` field (default `STUDENT`), `update_role()`, `list_users()`, `count_by_role()` (used by M2)
 
 M4 uses **PyMongo Async**.
 
 Other modules should use the database/repository layer rather than accessing MongoDB directly.
+
+### M2 — Authorization & RBAC ✅
+
+Roles (`STUDENT`, `ISSUER`, `ADMIN`) and permissions live in `app/authorization/`.
+Other modules protect routes with `Depends(require_permission(Permission.X))`.
+Endpoints: `GET /authorization/me`, `GET /authorization/users`, `PUT /authorization/users/{id}/role`.
+First admin: `python -m scripts.bootstrap_admin <email>` (run from `backend/`, once, after that user has logged in).
+Details: `docs/modules/M2_RBAC_MODULE.md`.
 
 ### Next
 
