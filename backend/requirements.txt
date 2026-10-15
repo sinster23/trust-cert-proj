@@ -12,6 +12,9 @@ google-auth>=2.29,<3
 requests>=2.31,<3
 PyJWT>=2.8,<3
 
+# M3: Ed25519 signing and public-key serialization
+cryptography>=42,<47
+
 # Tests
 pytest>=8,<9
 pytest-asyncio>=0.24,<2
