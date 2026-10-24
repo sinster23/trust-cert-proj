@@ -63,7 +63,7 @@ class CryptoService:
         """
         if not isinstance(canonical_data, bytes):
             raise InvalidDataError("Canonical data must be bytes")
-        if public_key is None and key_id is not None and key_id != self._keys.settings.key_id:
+        if key_id is not None and key_id != self._keys.settings.key_id:
             return False
         signature_bytes = decode_signature(signature)
         if signature_bytes is None:
