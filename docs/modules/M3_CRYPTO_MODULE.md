@@ -501,3 +501,18 @@ The M3 developer may choose:
 The cryptographic algorithm/library choice should be documented and reviewed with the integration lead because M5 and future verification will depend on it.
 
 Implementation must use established cryptographic libraries rather than custom cryptographic algorithms.
+
+---
+
+## Implementation status
+
+M3 is implemented under `backend/app/crypto/` with the following choices:
+
+- Ed25519 signatures using the `cryptography` package.
+- Canonical bytes are signed as supplied by the caller. M3 does not serialize certificate objects; SHA-256 is available as a separate hashing utility.
+- Signatures are encoded as unpadded URL-safe Base64 and returned with `key_id` and `algorithm` metadata.
+- Private keys are loaded from a configured PEM PKCS#8 path. Public keys use PEM SubjectPublicKeyInfo and may be loaded from a separate configured path or derived from the private key.
+- Configuration uses `SIGNING_PRIVATE_KEY_PATH`, optional `SIGNING_PUBLIC_KEY_PATH`, and `SIGNING_KEY_ID`; key contents do not belong in `.env`.
+- `CryptoService` exposes hashing, signing, verification, and public-key access. It does not expose the private key, authorize callers, or define the future certificate schema.
+
+The implementation tests are in `backend/tests/crypto/test_crypto.py`.

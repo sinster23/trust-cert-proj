@@ -179,15 +179,15 @@ implementation.
 
 ---
 
-### M3 — Cryptography 🔄
+### M3 — Cryptography ✅
 
-The cryptography module is planned under:
+The cryptography module is implemented under:
 
 ```text
 app/crypto/
 ```
 
-It will provide:
+It provides:
 
 - Cryptographic hashing
 - Digital signatures
@@ -196,6 +196,30 @@ It will provide:
 - Public key access
 - Key identification/versioning
 - Controlled cryptographic errors
+
+M3 uses Ed25519 from `cryptography` and signs canonical bytes supplied by the
+certificate/domain module. Signatures use unpadded URL-safe Base64 and include
+the configured key ID (`SIGNING_KEY_ID`) and `Ed25519` algorithm label in the
+service result. M3 does not serialize certificate objects or authorize users.
+
+Configure `SIGNING_PRIVATE_KEY_PATH` to a PEM PKCS#8 Ed25519 private key.
+`SIGNING_PUBLIC_KEY_PATH` may point to its PEM SubjectPublicKeyInfo public
+key; when omitted, M3 derives the public key from the private key. Keep private
+key files outside source control and do not put key contents in `.env`.
+
+Other backend modules can use the service directly:
+
+```python
+from app.crypto import CryptoService
+
+crypto = CryptoService()
+signed = crypto.sign(canonical_bytes)
+is_valid = crypto.verify_signature(
+    canonical_bytes, signed.signature, key_id=signed.key_id
+)
+```
+
+Run M3 tests from `backend/` with `python -m pytest tests/crypto`.
 
 M3 operates on canonical data supplied by the certificate/domain layer.
 Certificate structure and canonicalization are handled separately.
