@@ -9,6 +9,8 @@ from app.auth.router import router as auth_router  # M1
 from app.authorization.router import router as authorization_router  # M2
 from app.database.connection import DatabaseManager
 from app.database.repositories.user_repository import UserRepository
+from app.database.repositories.certificate_repository import CertificateRepository
+from app.certificates.router import router as certificates_router  # M5
 
 
 @asynccontextmanager
@@ -16,6 +18,7 @@ async def lifespan(app: FastAPI):
     manager = DatabaseManager()
     db = await manager.connect()          # fails fast if URI/DB is wrong
     await UserRepository(db).ensure_indexes()
+    await CertificateRepository(db).ensure_indexes()
     app.state.db_manager = manager
     yield
     await manager.close()
@@ -25,6 +28,7 @@ app = FastAPI(title="Credence API", lifespan=lifespan)
 
 app.include_router(auth_router)  # M1
 app.include_router(authorization_router)  # M2
+app.include_router(certificates_router)  # M5
 
 
 @app.get("/")

@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/* Credence design tokens: white + green, academic. To switch to a dark theme
+   later, only these values need to change. */
+@theme {
+  --color-brand: #166534;        /* primary green */
+  --color-brand-dark: #14532d;   /* hover / header band */
+  --color-brand-soft: #f1f7f3;   /* tinted surfaces */
+  --color-line: #d8e4db;         /* borders */
+  --color-ink: #0f1f16;          /* main text */
+  --color-muted: #4a5f51;        /* secondary text */
+  --font-serif: Georgia, "Times New Roman", serif;
+}
+
+html {
+  background: #ffffff;
+  color: var(--color-ink);
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+@media print {
+  header,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #ffffff;
+  }
+}
