@@ -23,3 +23,11 @@ class DatabaseOperationError(DatabaseError):
 
 class UserNotFoundError(DatabaseError):
     """No user matches the requested identifier or email."""
+
+
+class CertificateNotFoundError(DatabaseError):
+    """No persisted certificate matches the requested identifier."""
+
+
+class CertificateAlreadyRevokedError(DatabaseError):
+    """The certificate has already completed its ACTIVE to REVOKED transition."""

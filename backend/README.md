@@ -36,7 +36,7 @@ uvicorn app.main:app --reload
 - **M1 — Authentication:** Google identity validation, institutional email checks, user lookup/creation, and Credence JWT authentication.
 - **M2 — Authorization:** Role-based access control for `STUDENT`, `ISSUER`, and `ADMIN`. Issuer access requires explicit authorization.
 - **M3 — Cryptography:** SHA-256 hashing, Ed25519 signing and verification, and signing-key identification.
-- **M4 — Database:** MongoDB connection management, user persistence, role storage, and certificate persistence through repository interfaces.
+- **M4 — Database:** MongoDB connection management, user persistence, role storage, and certificate persistence/revocation through repository interfaces.
 - **M5 — Certificate Domain:** Academic certificate validation, deterministic canonicalization, certificate issuance, signing integration, and certificate retrieval.
 
 ## How It Works
@@ -54,7 +54,6 @@ uvicorn app.main:app --reload
 - Complete end-to-end integration and automated workflow checks.
 - Implement and validate independent certificate verification.
 - Verify signatures against the original canonical certificate data.
-- Add certificate status and revocation support.
 - Strengthen key management, audit logging, and security checks.
 
 ## Development Guidelines

@@ -2,7 +2,7 @@
 
 ## Implementation status and usage
 
-M4 provides an asynchronous MongoDB persistence boundary for User records. It does not implement authentication, password hashing, or any certificate operations.
+M4 provides asynchronous MongoDB persistence for User records and issued certificate records. It does not implement authentication, password handling, certificate issuance, signing, or verification. Certificate persistence and lifecycle behavior are documented in [M4_DATABASE_MANAGEMENT.md](M4_DATABASE_MANAGEMENT.md).
 
 ### Configuration and lifecycle
 
@@ -23,6 +23,8 @@ Set `MONGODB_URI` and `MONGODB_DATABASE` in the backend process environment. The
 Missing users raise `UserNotFoundError`; malformed inputs (bad id, role, skip/limit) raise `InvalidDatabaseOperationError`; duplicates raise `DuplicateDataError`. Database exceptions are wrapped in sanitized application exceptions. On startup, call `await repository.ensure_indexes()` to ensure the unique email and Google-sub indexes and a non-unique role index. A stored role that fails validation is treated as corrupt data (`DatabaseOperationError`, fails closed).
 
 Known limitation: `count_by_role` followed by `update_role` (M2's "last admin" check) is not atomic, so two concurrent demotions could in theory both pass. Closing that needs a MongoDB transaction or a dedicated guard document.
+
+`CertificateRepository` accepts the existing certificate data and signature metadata record from M5, adds a top-level `status: "ACTIVE"`, and supports retrieval plus atomic revocation to `"REVOKED"`. Revocation changes only that status field. It raises `CertificateNotFoundError` when no certificate exists and `CertificateAlreadyRevokedError` for repeated attempts. It does not import M5 models or change signed certificate content.
 
 ### Tests
 
@@ -69,9 +71,7 @@ For this milestone, M4 is responsible for:
 
 ### Important
 
-This is **only the database foundation**.
-
-Certificate creation and certificate-related database functionality will be introduced later.
+M4 owns persistence and lifecycle status only. Certificate data validation, issuance, signing, and verification remain outside the database module.
 
 ---
 
@@ -509,24 +509,15 @@ The integration lead will review and test the module before merging it into the 
 
 # 15. Future Compatibility
 
-Credence will eventually require database support for additional functionality such as:
+Future Credence functionality may require database support for additional features such as:
 
 ```text
-Certificates
-Certificate status
-Revocation
 Audit records
 Issuer information
 Verification records
 ```
 
-M4 should therefore establish a database structure that can be extended later.
-
-However:
-
-> **Do not implement future certificate/verification functionality as part of this assignment.**
-
-We will introduce those requirements when their respective modules are started.
+Certificate persistence, status, and revocation are implemented by M4. Do not add audit, issuer, verification, or other future collections until their requirements are assigned.
 
 ---
 

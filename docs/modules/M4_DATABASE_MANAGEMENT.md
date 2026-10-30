@@ -165,3 +165,13 @@ Before M3 begins, M4 must:
 M4 must communicate the final method signatures and exception behavior to M1 and M3.
 
 **Definition of done:** Certificate persistence, retrieval and revocation work correctly, and the changes are merged without breaking existing issuance functionality.
+
+## Implemented repository contract
+
+`CertificateRepository` continues to accept the existing three-field issue record in `create_certificate(record)`. The repository adds `status: "ACTIVE"` itself, stores it alongside (not inside) `certificate_data` and `signature_metadata`, and returns the complete persisted shape. `get_certificate_by_id(certificate_id)` returns that complete record, including status. Legacy records without a status are exposed as `ACTIVE` and can be revoked.
+
+`revoke_certificate(certificate_id) -> dict[str, Any]` validates the canonical `CERT-` plus 32 lowercase hexadecimal identifier and uses a single atomic MongoDB update to transition `ACTIVE` (or a legacy record with no status) to `REVOKED`. Its update only sets `status`, preserving the certificate data and signature metadata. It returns the revoked record.
+
+The repository raises `InvalidDatabaseOperationError` for malformed IDs, `CertificateNotFoundError` when no record exists, and `CertificateAlreadyRevokedError` for repeated revocation. Database failures are wrapped in `DatabaseOperationError` with a sanitized message. `create_certificate()` retains its existing `DuplicateDataError` behavior. These exceptions are database-layer errors; API callers should map them to appropriate HTTP responses without exposing chained driver details.
+
+M1 and M3 consumers continue using the unchanged issuance and retrieval signatures. The lifecycle status is not included in certificate data or the signed representation. Repository tests are in `backend/tests/database/test_certificate_repository.py` and run with the other DB tests from `backend` using `python -m pytest tests/database`.
