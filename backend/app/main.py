@@ -12,6 +12,7 @@ from app.database.repositories.user_repository import UserRepository
 from app.database.repositories.certificate_repository import CertificateRepository
 from app.certificates.router import router as certificates_router  # M5
 from app.verification.router import router as verification_router  # public verification
+from app.verification.middleware import VerificationNoStoreMiddleware
 
 
 @asynccontextmanager
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Credence API", lifespan=lifespan)
+app.add_middleware(VerificationNoStoreMiddleware)
 
 app.include_router(auth_router)  # M1
 app.include_router(authorization_router)  # M2

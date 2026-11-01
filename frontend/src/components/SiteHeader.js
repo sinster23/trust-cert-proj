@@ -18,6 +18,9 @@ export default function SiteHeader() {
           <Link href="/" className="text-muted hover:text-brand-dark">
             Home
           </Link>
+          <Link href="/verify" className="text-muted hover:text-brand-dark">
+            Verify
+          </Link>
           <AuthNav />
         </nav>
       </div>

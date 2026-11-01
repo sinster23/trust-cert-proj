@@ -1,8 +1,9 @@
 """Public certificate verification workflow.
 
-    validate id -> load record (M4) -> rebuild + canonicalize (M5)
+    validate id -> load record (M4) -> require known lifecycle status
+    -> rebuild + canonicalize (M5)
     -> validate signature metadata -> preflight key (M3) -> verify (M3)
-    -> evaluate lifecycle status
+    -> VALID / REVOKED from the lifecycle status
 
 Outcomes
 --------
@@ -11,7 +12,8 @@ Raised, and mapped to HTTP by the router:
 
 * ``VerificationUnavailableError`` - UNVERIFIABLE (key / store unavailable).
 * ``DatabaseError`` (other than "not found") - the store failed.
-* ``StoredCertificateError`` - the stored lifecycle status is unknown.
+* ``StoredCertificateError`` - the stored lifecycle status is unknown (checked
+  first, so it wins over INVALID and UNVERIFIABLE).
 * ``CertificateValidationError`` - the certificate id itself is malformed.
 
 Why the key preflight exists
@@ -29,7 +31,7 @@ import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
-
+from .schemas import CertificateDetails, LifecycleStatus, VerificationResponse
 from app.certificates import Certificate, canonicalize
 from app.certificates.exceptions import CertificateError, StoredCertificateError
 from app.certificates.models import validate_certificate_id
@@ -57,19 +59,22 @@ class _InvalidRecord(Exception):
 
 @dataclass(frozen=True, slots=True)
 class _SignedMaterial:
+    certificate: Certificate          # <- new first field
     canonical_data: bytes
     signature: str
     key_id: str
 
 
-def _lifecycle_status(record: Any) -> LifecycleStatus | None:
-    """The stored status if it is ACTIVE or REVOKED, otherwise None (never assume)."""
-    if not isinstance(record, Mapping):
-        return None
-    status = record.get("status")
+def _require_lifecycle_status(record: Any) -> LifecycleStatus:
+    """The stored status, which must be ACTIVE or REVOKED (never assume).
+
+    Anything else is an inconsistent stored record. It is rejected before any
+    other check, so the outcome (HTTP 500) does not depend on the signature.
+    """
+    status = record.get("status") if isinstance(record, Mapping) else None
     if isinstance(status, str) and status in (ACTIVE, REVOKED):
         return status  # type: ignore[return-value]
-    return None
+    raise StoredCertificateError("Stored certificate has an unknown lifecycle status")
 
 
 def _extract_signed_material(certificate_id: str, record: Any) -> _SignedMaterial:
@@ -111,6 +116,7 @@ def _extract_signed_material(certificate_id: str, record: Any) -> _SignedMateria
         raise _InvalidRecord("unsupported signature algorithm")
 
     return _SignedMaterial(
+        certificate=certificate,      # <- new
         canonical_data=canonical_data,
         signature=values["signature"],
         key_id=values["key_id"],
@@ -120,16 +126,10 @@ def _extract_signed_material(certificate_id: str, record: Any) -> _SignedMateria
 class VerificationService:
     """Verifies stored certificates. No authentication or authorization (public)."""
 
-    def __init__(
-        self,
-        crypto: CryptoService | None,
-        repository: CertificateRepository | None,
-    ) -> None:
-        # ``None`` means "could not be configured": reported as UNVERIFIABLE,
-        # and only once it is actually needed (a missing certificate is still
-        # NOT_FOUND even when the signing key is misconfigured).
+    def __init__(self, crypto, repository, show_details: bool = False) -> None:
         self._crypto = crypto
         self._repository = repository
+        self._show_details = show_details   # off by default
 
     async def verify_certificate(self, certificate_id: str) -> VerificationResponse:
         # Defensive: the router already validates the id. Validating here keeps
@@ -140,7 +140,9 @@ class VerificationService:
         if record is None:
             return VerificationResponse.not_found(certificate_id)
 
-        lifecycle = _lifecycle_status(record)
+        # Checked first, straight after retrieval: an unknown lifecycle status is
+        # a server error (HTTP 500) whatever the signature or metadata look like.
+        lifecycle = _require_lifecycle_status(record)
 
         try:
             material = _extract_signed_material(certificate_id, record)
@@ -158,11 +160,13 @@ class VerificationService:
 
         # Signature verification has priority: lifecycle is only consulted for
         # an authentic certificate.
-        if lifecycle == ACTIVE:
-            return VerificationResponse.valid(certificate_id)
+        certificate = material.certificate   # id AND details come from the verified object
+        details = (
+            CertificateDetails.from_certificate(certificate) if self._show_details else None
+        )
         if lifecycle == REVOKED:
-            return VerificationResponse.revoked(certificate_id)
-        raise StoredCertificateError("Stored certificate has an unknown lifecycle status")
+            return VerificationResponse.revoked(certificate.certificate_id, details)
+        return VerificationResponse.valid(certificate.certificate_id, details)
 
     async def _load_record(self, certificate_id: str) -> Mapping[str, Any] | None:
         if self._repository is None:

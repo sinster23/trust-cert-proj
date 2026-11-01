@@ -37,6 +37,12 @@ export default function Home() {
           </p>
           <div className="mt-10 flex flex-wrap gap-4">
             <HeroAction />
+            <Link
+              href="/verify"
+              className="rounded-md border border-brand px-6 py-3 font-medium text-brand hover:bg-white"
+            >
+              Verify a certificate
+            </Link>
           </div>
         </div>
       </section>

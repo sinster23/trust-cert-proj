@@ -111,7 +111,20 @@ function DashboardContent() {
                 New certificate
               </Link>
             </Card>
-          ) : (
+          ) : can("user:list") ? (
+            <Card title="Manage issuers">
+              <p>
+                Grant or remove issuer access for institute accounts. Issuers
+                are the only users who can issue certificates.
+              </p>
+              <Link
+                href="/admin/users"
+                className="mt-4 inline-block rounded-md bg-brand px-4 py-2 font-medium text-white hover:bg-brand-dark"
+              >
+                Manage users
+              </Link>
+            </Card>
+            ) :(
             <Card title="Certificates">
               <p>
                 Your account has view-only access. Certificates are issued by
@@ -119,6 +132,8 @@ function DashboardContent() {
               </p>
             </Card>
           )}
+
+          
 
           <LookupCard />
 

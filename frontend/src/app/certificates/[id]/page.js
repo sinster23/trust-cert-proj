@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { useAuth } from "@/components/AuthProvider";
+import VerificationSection from "@/components/VerificationSection";
 
 // "2025-06-15" -> "15 June 2025" (no timezone shifting)
 function formatDate(iso) {
@@ -106,10 +107,6 @@ function SignaturePanel({ meta }) {
           <dd className="mt-1 break-all font-mono text-xs text-ink">{meta.signature}</dd>
         </div>
       </dl>
-      <p className="mt-4 text-xs leading-relaxed text-muted">
-        This page shows the stored certificate record and its signature.
-        Automated signature verification is not yet available here.
-      </p>
     </div>
   );
 }
@@ -165,6 +162,7 @@ function CertificateContent() {
         <>
           <CertificateSheet certificate={state.data.certificate} />
           <SignaturePanel meta={state.data.signature_metadata} />
+          <VerificationSection certificateId={state.data.certificate.certificate_id} />
         </>
       )}
     </section>

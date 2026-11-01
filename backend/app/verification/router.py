@@ -32,6 +32,8 @@ from app.database.repositories.certificate_repository import CertificateReposito
 from .exceptions import VerificationUnavailableError
 from .schemas import VerificationResponse, VerificationStatus
 from .service import VerificationService
+from . import config
+from .rate_limit import enforce_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,8 @@ router = APIRouter(prefix="/certificates", tags=["verification"])
 # Same pattern as the M5 certificate id format (a test keeps them in sync).
 CERTIFICATE_ID_PATTERN = r"^CERT-[0-9a-f]{32}$"
 
+def get_show_details() -> bool:
+    return config.show_details_enabled()
 
 def get_verification_crypto() -> CryptoService | None:
     try:
@@ -66,18 +70,20 @@ def get_verification_repository(request: Request) -> CertificateRepository | Non
 def get_verification_service(
     crypto: Annotated[CryptoService | None, Depends(get_verification_crypto)],
     repository: Annotated[CertificateRepository | None, Depends(get_verification_repository)],
+    show_details: Annotated[bool, Depends(get_show_details)],
 ) -> VerificationService:
-    return VerificationService(crypto, repository)
-
+    return VerificationService(crypto, repository, show_details=show_details)
 
 @router.get(
     "/verify/{certificate_id}",
     response_model=VerificationResponse,
     summary="Verify a certificate (public)",
+    dependencies=[Depends(enforce_rate_limit)],
     responses={
         404: {"model": VerificationResponse, "description": "Certificate not found"},
         503: {"model": VerificationResponse, "description": "Verification unavailable"},
         500: {"description": "Stored certificate data is inconsistent"},
+        429: {"description": "Too many requests; see Retry-After"}
     },
 )
 async def verify_certificate(
@@ -100,6 +106,11 @@ async def verify_certificate(
         logger.exception("Stored certificate record is inconsistent")
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "Stored certificate could not be verified"
+        )
+    except Exception:
+        logger.exception("Unexpected error during certificate verification")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "Certificate verification failed"
         )
 
     if result.status is VerificationStatus.NOT_FOUND:

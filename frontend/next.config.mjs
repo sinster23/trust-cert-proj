@@ -13,7 +13,10 @@ const nextConfig = {
   // The browser only talks to Next.js (same origin); /api/* is forwarded to
   // FastAPI. This avoids CORS and keeps the backend URL out of client code.
   async rewrites() {
-    return [{ source: "/api/:path*", destination: `${BACKEND_URL}/:path*` }];
+     return [{
+    source: "/api/:path((?!certificates/verify(?:/|$)).*)",
+    destination: `${BACKEND_URL}/:path*`,
+  }];
   },
 };
 
