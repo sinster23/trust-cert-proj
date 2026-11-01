@@ -1,6 +1,31 @@
 # Credence Backend
 
-Backend API for **Credence**, a secure academic certificate issuance and verification system built with FastAPI, MongoDB, and Ed25519 digital signatures.
+Backend API for **Credence**, a secure academic certificate issuance and verification system built using FastAPI, MongoDB, and Ed25519 digital signatures.
+
+## Tech Stack
+- FastAPI
+- Python
+- MongoDB
+- Ed25519 Cryptography
+- JWT Authentication
+
+## Project Structure
+
+```text
+backend/
+├── app/
+│   ├── main.py
+│   ├── auth/             # Authentication and JWT
+│   ├── authorization/    # Role-based access control
+│   ├── crypto/           # Signing and signature verification
+│   ├── database/         # MongoDB and repositories
+│   ├── certificates/     # Certificate models and issuance
+│   └── verification/     # Public certificate verification
+├── tests/                # Automated tests
+├── .env.example          # Environment configuration template
+├── requirements.txt
+└── README.md
+```
 
 ## Setup
 
@@ -8,19 +33,14 @@ Backend API for **Credence**, a secure academic certificate issuance and verific
 python -m venv .venv
 ```
 
-Activate the environment on Windows:
-
-```powershell
-.venv\Scripts\activate
-```
-
-Install dependencies and configure the environment:
+Activate the environment and install dependencies:
 
 ```bash
+.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Create `.env` using `.env.example` as a reference. Configure MongoDB and signing-key paths without committing secrets.
+Create a `.env` file using `.env.example` and configure MongoDB, authentication, signing keys, and verification settings.
 
 Run from the `backend/` directory:
 
@@ -31,35 +51,34 @@ uvicorn app.main:app --reload
 - API: http://127.0.0.1:8000
 - Swagger: http://127.0.0.1:8000/docs
 
-## Current Implementation
+## Key Features
 
-- **M1 — Authentication:** Google identity validation, institutional email checks, user lookup/creation, and Credence JWT authentication.
-- **M2 — Authorization:** Role-based access control for `STUDENT`, `ISSUER`, and `ADMIN`. Issuer access requires explicit authorization.
-- **M3 — Cryptography:** SHA-256 hashing, Ed25519 signing and verification, and signing-key identification.
-- **M4 — Database:** MongoDB connection management, user persistence, role storage, and certificate persistence/revocation through repository interfaces.
-- **M5 — Certificate Domain:** Academic certificate validation, deterministic canonicalization, certificate issuance, signing integration, and certificate retrieval.
+- **Authentication:** Google identity validation, institutional email checks, and JWT authentication.
+- **Role-Based Access Control:** STUDENT, ISSUER, and ADMIN roles with controlled issuer authorization.
+- **Certificate Issuance:** Academic certificate creation, validation, and unique ID generation.
+- **Digital Signatures:** SHA-256 hashing and Ed25519 signing and verification.
+- **Certificate Verification:** Public verification by Certificate ID with signature and revocation checks.
+- **Database Management:** MongoDB persistence for users, roles, and certificates.
+- **Security:** Student ID masking, configurable public detail visibility, trusted proxy authentication, and per-IP rate limiting.
 
-## How It Works
+## Verification
 
-1. Users authenticate through Google.
-2. The backend validates identity and applies role-based permissions.
-3. Authorized issuers submit academic certificate details.
-4. M5 validates and canonicalizes the certificate.
-5. M3 digitally signs the canonical bytes.
-6. M4 persists the certificate and signature metadata in MongoDB.
-7. The frontend displays the issued certificate and its digital signature.
+Public endpoint:
 
-## Next Steps
+```http
+GET /certificates/verify/{certificate_id}
+```
 
-- Complete end-to-end integration and automated workflow checks.
-- Implement and validate independent certificate verification.
-- Verify signatures against the original canonical certificate data.
-- Strengthen key management, audit logging, and security checks.
+Supported outcomes: `VALID`, `INVALID`, `REVOKED`, `NOT_FOUND`, and `UNVERIFIABLE`.
+
+Verified certificate details can be displayed for public comparison when enabled through environment configuration.
+
+**Note:** Current verification validates the official database record. Automated PDF verification and QR-code integration are planned enhancements.
 
 ## Development Guidelines
 
 - Use the shared FastAPI application in `app/main.py`.
-- Access MongoDB through the database/repository layer.
+- Access MongoDB through repository interfaces.
 - Enforce authorization on the backend.
-- Keep private keys, `.env`, and other secrets out of source control.
-- Update module documentation and tests when functionality changes.
+- Keep private keys and environment secrets out of source control.
+- Maintain tests and documentation alongside module changes.

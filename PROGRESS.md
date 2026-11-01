@@ -1,367 +1,286 @@
-# Credence — Team Contributions and Implementation Progress
+# Credence --- Team Contributions and Implementation Progress
 
 ## 1. Project Overview
 
-**Credence** is a secure academic certificate issuance and verification system designed to establish the authenticity and integrity of institutional certificates.
+**Credence** is an academic certificate issuance and verification system
+designed to protect certificate authenticity and integrity.
 
-The system combines Google-based authentication, role-based access control, certificate validation, deterministic canonicalization, Ed25519 digital signatures, and MongoDB persistence.
+The system combines Google-based authentication, role-based access
+control (RBAC), certificate validation, deterministic canonicalization,
+Ed25519 digital signatures, and MongoDB persistence.
 
-The backend is built using **FastAPI and Python**, with MongoDB as the database. The frontend is built using **Next.js** and communicates with the backend API.
+-   **Backend:** FastAPI and Python
+-   **Frontend:** Next.js
+-   **Database:** MongoDB
+-   **Cryptography:** SHA-256 and Ed25519
 
-The project follows a modular architecture in which each member is responsible for a specific part of the system. Modules integrate through defined service and repository interfaces rather than implementing duplicate authentication, cryptography, or database logic.
+The project uses a modular architecture with separate responsibilities
+for authentication, authorization, cryptography, persistence, and
+certificate-domain logic.
 
 ## 2. Team Contributions
 
-### M1 — Authentication
-
-**Responsibility:** Establish the identity of users accessing Credence and provide authenticated access to protected backend resources.
-
-**Implementation:**
-
-- Google-based user authentication.
-- Validation of Google identity tokens and institutional identity requirements.
-- Use of Google's stable `sub` claim to identify users.
-- User lookup and creation through the M4 database layer.
-- Credence JWT generation and authentication for subsequent API requests.
-- Authentication dependencies for protected backend endpoints.
-
-**How it works:**
-
-1. A user signs in through the frontend using Google.
-2. The backend validates the Google identity token rather than trusting identity details supplied by the browser.
-3. Institutional email/domain requirements are checked.
-4. The user's Google identity is matched with the corresponding Credence user record through M4.
-5. The backend establishes a Credence session using a JWT.
-6. Protected API requests use that JWT to identify the current user.
-
-**Integration with other modules:**
-
-- Uses M4 for persistent user records.
-- Provides the authenticated identity used by M2 to evaluate permissions.
-- Protects endpoints that require a logged-in user.
-
-**Remaining work:**
-
-- Verify token expiry, invalid-token handling, and session failure cases.
-- Confirm the institutional identity policy is enforced consistently.
-- Test authentication through the complete frontend-to-backend flow.
-
-### M2 — Authorization and Role-Based Access Control
-
-**Responsibility:** Decide what an authenticated user is permitted to do.
-
-**Implementation:**
-
-Credence defines three roles:
-
-- `STUDENT`
-- `ISSUER`
-- `ADMIN`
-
-The authorization layer separates authentication from permission checks. A valid login establishes identity, but it does not automatically grant certificate-issuing privileges.
-
-Implemented authorization rules include:
-
-- New users default to `STUDENT`.
-- Issuer privileges must be explicitly granted by an administrator.
-- Administrator access is explicitly provisioned.
-- Users cannot grant themselves additional roles.
-- Protected backend operations enforce permissions through authorization dependencies.
-- Role changes and user-role lookups use the database/repository layer.
-
-The documented authorization endpoints include:
-
-- `GET /authorization/me` — retrieve the current user's authorization information.
-- `GET /authorization/users` — retrieve users for authorized administrative workflows.
-- `PUT /authorization/users/{id}/role` — update a user's role through the authorized role-management workflow.
-
-**How it works:**
-
-1. M1 authenticates the user and establishes the Credence identity.
-2. M2 obtains the authenticated user context.
-3. The authorization dependency checks the user's assigned role and the permission required by the endpoint.
-4. Authorized requests proceed; requests without the required permission are rejected.
-
-For example, an authenticated student cannot issue a certificate merely because they have a valid JWT. The backend must establish that the user has the `ISSUER` role.
-
-**Integration with other modules:**
-
-- Uses M1's authenticated user context.
-- Uses M4 to persist and retrieve role assignments.
-- Protects certificate issuance operations in M5.
-
-**Remaining work:**
-
-- Verify role changes and permission checks against real API requests.
-- Confirm that every certificate-issuing route requires issuer authorization.
-- Test missing JWTs, invalid JWTs, student access, and administrator-only operations.
-
-### M3 — Cryptography and Digital Signatures
-
-**Responsibility:** Provide the cryptographic operations used to establish certificate integrity and authenticity.
-
-**Implementation:**
-
-The cryptography module is located under `app/crypto/`.
-
-Its responsibilities include:
-
-- SHA-256 hashing.
-- Ed25519 digital-signature generation.
-- Digital-signature verification.
-- Signing-key loading and validation.
-- Public-key access.
-- Signing key identification through a configured key ID.
-- Controlled handling of cryptographic errors.
-
-The implementation uses the Python `cryptography` library.
-
-Private-key and public-key paths are configured through environment variables, including:
-
-- `SIGNING_PRIVATE_KEY_PATH`
-- `SIGNING_PUBLIC_KEY_PATH`
-- `SIGNING_KEY_ID`
-
-The private key is loaded from a PEM-encoded PKCS#8 Ed25519 key. If the public-key path is omitted, the public key can be derived from the private key.
-
-Signatures use unpadded URL-safe Base64 encoding. The service result includes the signature, key ID, and algorithm label.
-
-**How it works:**
-
-1. M5 produces the canonical byte representation of a certificate.
-2. M3 signs those exact bytes using the configured Ed25519 private key.
-3. M3 returns the signature and associated signing metadata.
-4. During verification, the corresponding public key verifies the signature against the original canonical bytes.
-5. If the certificate data changes, the resulting canonical bytes differ and signature verification should fail.
-
-M3 deliberately does not define the academic certificate schema, serialize certificate objects, or decide whether a user is authorized to issue certificates.
-
-**Integration with other modules:**
-
-- Receives canonical bytes from M5.
-- Supplies signature metadata for persistence through M4.
-- Provides cryptographic verification for certificate-verification workflows.
-
-**Remaining work:**
-
-- Verify signatures using persisted certificate records.
-- Confirm tampered certificate data fails verification.
-- Validate key ID handling and public-key selection.
-- Strengthen key rotation and key protection before production use.
-
-### M4 — Database and Persistence
-
-**Responsibility:** Manage persistent application data and provide repository interfaces to the other modules.
-
-**Implementation:**
-
-The database layer is located under `app/database/` and uses **PyMongo Async** for asynchronous MongoDB operations.
-
-The user-persistence functionality includes:
-
-- MongoDB connection management.
-- User model and repository.
-- User creation and lookup.
-- Google identity (`google_sub`) storage.
-- Email normalization.
-- Duplicate-email protection.
-- Persistent user roles.
-- Role update and lookup operations.
-- Database error handling.
-
-The certificate-persistence work extends this foundation with a repository for issued certificates.
-
-The intended issued-certificate record separates certificate content from signature metadata:
-
-```text
-Issued Certificate
-├── certificate_id
-├── certificate_data
-│   ├── student_id
-│   ├── student_name
-│   ├── institution
-│   ├── degree
-│   ├── field_of_study
-│   ├── graduation_date
-│   ├── issue_date
-│   └── schema_version
-└── signature_metadata
-    ├── signature
-    ├── key_id
-    └── algorithm
-```
-
-A unique index on `certificate_id` prevents duplicate certificate identifiers. The repository provides operations to create a certificate record and retrieve a certificate by its identifier.
-
-**How it works:**
-
-1. M1 uses the user repository to find or create authenticated users.
-2. M2 uses persisted role information to make authorization decisions.
-3. M5 creates the certificate data and obtains its signature from M3.
-4. M5 passes the certificate and signature metadata to the certificate repository.
-5. M4 stores the issued record in MongoDB and retrieves it when requested.
-
-Other modules should use the repository layer rather than creating their own MongoDB connections or accessing collections directly.
-
-**Remaining work:**
-
-- Verify index initialization during application startup.
-- Confirm duplicate certificate IDs are handled safely.
-- Test persistence and retrieval using the same record returned by the issuance API.
-- Confirm failures during persistence do not result in a successful issuance response.
-
-### M5 — Certificate Domain, Issuance, and Canonicalization
-
-**Responsibility:** Define the academic certificate structure, validate certificate information, generate deterministic canonical bytes, and coordinate signing and persistence.
-
-**Implementation:**
-
-The certificate domain includes:
-
-- Certificate data models.
-- Request and response schemas.
-- Domain validation and custom exceptions.
-- Certificate identifier generation.
-- Deterministic canonicalization.
-- Integration with M3's signing service.
-- Integration with M4's certificate repository.
-- Certificate retrieval.
-
-The academic certificate model contains:
-
-- Certificate ID.
-- Student ID and name.
-- Institution.
-- Degree.
-- Field of study.
-- Graduation date.
-- Issue date.
-- Schema version.
-
-Certificate IDs use the `CERT-` prefix followed by a UUID-derived hexadecimal identifier.
-
-The domain validates required fields, text normalization, identifier formats, ISO calendar dates, and the supported schema version. The issue date cannot precede the graduation date.
-
-Canonicalization serializes the validated certificate into deterministic UTF-8 JSON bytes using sorted keys and compact separators. This ensures that signing and verification use a consistent byte representation.
-
-**How it works:**
-
-1. The issuance request is validated against the certificate schema and domain rules.
-2. M5 creates a certificate with a server-generated identifier and issue date.
-3. The certificate is canonicalized into deterministic bytes.
-4. M3 signs those bytes.
-5. M5 builds a persistence record containing certificate data and signature metadata.
-6. M4 stores the record.
-7. The issuance response returns the certificate and its digital signature metadata.
-8. The retrieval workflow obtains the persisted record using the certificate ID.
-
-**Integration with other modules:**
-
-- Receives authenticated and authorized requests through M1 and M2.
-- Uses M3 for signing and, in the verification workflow, signature verification.
-- Uses M4 for persistent certificate storage and retrieval.
-- Supplies certificate information to the Next.js frontend.
-
-**Remaining work:**
-
-- Complete independent verification against the retrieved certificate data.
-- Ensure the public key corresponds to the stored signing key ID.
-- Return a clear verification result for valid, modified, and unknown certificates.
-- Add certificate status and revocation handling.
-- Preserve compatibility when certificate schema versions evolve.
+### M1 --- Authentication and Verification API
+
+**Implemented:** - Google identity/token validation and institutional
+email checks. - User lookup/creation and Credence JWT authentication. -
+Authentication dependencies for protected endpoints. - Public
+certificate verification by Certificate ID. - Reconstruction and
+canonicalization of the stored certificate before signature
+verification. - Verification outcomes: `VALID`, `INVALID`, `REVOKED`,
+`NOT_FOUND`, and `UNVERIFIABLE`. - Public certificate-details response
+for successfully verified records, subject to the visibility setting. -
+Server-side student ID masking. - Verification response handling for
+malformed IDs, unavailable infrastructure, and internal errors.
+
+**Verification API:** `GET /certificates/verify/{certificate_id}`
+
+The endpoint is public and does not require login. It verifies the
+official record stored in MongoDB; it does not currently inspect an
+uploaded PDF or physical certificate.
+
+**Configuration:** - `VERIFICATION_SHOW_DETAILS` controls whether public
+certificate details are returned. - `VERIFICATION_RATE_LIMIT_PER_MINUTE`
+configures the per-IP request limit. - `VERIFICATION_PROXY_SECRET`
+authenticates trusted client-IP forwarding from the frontend proxy.
+
+**Remaining validation:** - Confirm verification uses exactly the same
+canonicalization process as issuance. - Test all verification outcomes
+against persisted records. - Test key-unavailable, database-unavailable,
+and malformed-record cases. - Confirm trusted proxy IP handling cannot
+be spoofed.
+
+### M2 --- Authorization, RBAC, and Frontend
+
+**Implemented:** - Role-based access control for `STUDENT`, `ISSUER`,
+and `ADMIN`. - New users default to `STUDENT`. - Issuer privileges
+require explicit administrative authorization. - Backend authorization
+checks for protected operations. - Admin RBAC frontend page for
+role-management workflows. - Public certificate verification frontend. -
+Manual verification entry page at `/verify`. - Direct result route at
+`/verify/{certificate_id}`, which automatically verifies the supplied
+ID. - Verification result handling for valid, invalid, revoked,
+not-found, and unavailable outcomes. - Official certificate details
+display when the backend makes them available. - Comparison guidance
+explaining that the verifier should compare the presented certificate
+with the official record. - Loading, retry, and error states for
+verification requests.
+
+**Remaining validation:** - Test role assignment and revocation through
+the complete frontend-to-backend flow. - Confirm every protected
+issuer/admin action is enforced by the backend. - Test all verification
+result and error states on desktop and mobile.
+
+### M3 --- Cryptography and Digital Signatures
+
+**Implemented:** - SHA-256 hashing. - Ed25519 digital-signature
+generation and verification. - Signing-key loading and validation. -
+Public-key access and signing-key identification through a configured
+key ID. - Controlled handling of cryptographic errors. - Integration
+with certificate issuance and verification.
+
+The cryptography module receives canonical certificate bytes from the
+certificate-domain layer. It does not define certificate schemas or
+decide user permissions.
+
+**Remaining validation:** - Test valid signatures against persisted
+certificate records. - Confirm modifications to signed certificate data
+cause verification failure. - Validate key ID handling and public-key
+selection. - Review key rotation and production key protection.
+
+### M4 --- Database and Persistence
+
+**Implemented:** - MongoDB connection management. - User creation and
+lookup. - Google identity (`google_sub`) storage and email
+normalization. - Persistent user roles and role update/lookups. -
+Certificate persistence and retrieval through repository interfaces. -
+Unique certificate ID enforcement. - Certificate lifecycle status and
+revocation support.
+
+Certificate records separate certificate data from signature metadata.
+The certificate data includes the certificate ID, student information,
+institution, degree, field of study, graduation date, issue date, and
+schema version. Signature metadata includes the signature, key ID, and
+algorithm.
+
+**Remaining validation:** - Verify index initialization during
+application startup. - Test duplicate certificate ID handling. - Test
+issuance, retrieval, and revocation against persisted records. - Confirm
+persistence failures cannot result in a successful issuance response.
+
+### M5 --- Certificate Domain, Issuance, and Canonicalization
+
+**Implemented:** - Academic certificate domain model and validation. -
+Certificate ID generation and validation. - Deterministic
+canonicalization into UTF-8 JSON bytes. - Signing integration with M3. -
+Persistence integration with M4. - Certificate issuance and retrieval. -
+Integration with the public verification workflow.
+
+The certificate model includes: - Certificate ID - Student ID and name -
+Institution - Degree - Field of study - Graduation date - Issue date -
+Schema version
+
+The certificate is validated and canonicalized before signing. The
+resulting signature and certificate data are persisted through the
+repository layer.
+
+**Remaining validation:** - Test issuance-to-verification consistency. -
+Test tampering of each signed field. - Confirm schema-version
+compatibility and validation behaviour.
 
 ## 3. Frontend Implementation
 
-The Next.js frontend provides the user-facing interface for the existing backend functionality.
+The Next.js frontend currently provides: - Google authentication. -
+Role-aware application access. - Certificate creation for authorized
+issuers. - Issued certificate viewing. - Admin RBAC and role-management
+interface. - Public certificate verification by ID. - Automatic
+verification when opening `/verify/{certificate_id}`. - Verification
+status and official certificate-details display when enabled. - Guidance
+to compare the presented certificate with the official record.
 
-The current reported features include:
+The frontend does not independently authorize users, sign certificates,
+or access MongoDB. Authorization and cryptographic verification remain
+backend responsibilities.
 
-- Google authentication.
-- Role-aware access to application functionality.
-- Certificate creation for authorized issuers.
-- Viewing issued certificates.
-- Displaying digital-signature information.
+## 4. Public Verification Behaviour
 
-**How the frontend interacts with the backend:**
+The public verification endpoint checks the certificate record stored in
+Credence's database.
 
-1. The user authenticates through the frontend.
-2. The frontend uses the authenticated session when calling protected API endpoints.
-3. The backend remains responsible for validating identity and enforcing permissions.
-4. An authorized issuer submits certificate details through the certificate form.
-5. The backend validates, signs, and persists the certificate.
-6. The frontend displays the result returned by the backend.
+  -----------------------------------------------------------------------
+  Outcome                             Meaning
+  ----------------------------------- -----------------------------------
+  `VALID`                             Signature is valid and the
+                                      certificate is active.
 
-The frontend is a client of the API; it does not independently authorize issuers, sign certificates, or access MongoDB.
+  `INVALID`                           Signature verification failed.
 
-## 4. End-to-End Architecture
+  `REVOKED`                           Signature is valid, but the
+                                      certificate has been revoked.
 
-```text
-Next.js Frontend
-       |
-       v
-M1: Google Authentication
-       |
-       v
-M2: Role and Permission Checks
-       |
-       v
-M5: Certificate Validation
-       |
-       v
-M5: Canonicalization
-       |
-       v
-M3: Ed25519 Signing
-       |
-       v
-M4: MongoDB Persistence
-       |
-       v
-Certificate Issued and Displayed
-```
+  `NOT_FOUND`                         No certificate exists for the
+                                      supplied ID.
 
-Certificate verification follows the complementary path: retrieve the persisted certificate, reconstruct the canonical bytes, and verify the signature using the appropriate public key.
+  `UNVERIFIABLE`                      Verification could not be completed
+                                      because of a key or infrastructure
+                                      issue.
+  -----------------------------------------------------------------------
 
-## 5. Current Project Status
+For `VALID` and `REVOKED` records, the backend can return selected
+official certificate details when `VERIFICATION_SHOW_DETAILS=true`.
+Student ID masking is performed on the server. Details are not returned
+for invalid, missing, or unverifiable records.
 
-The team has reported implementation of the core authentication and role-based access flow, certificate creation by authorized issuers, digital signing, database persistence, and frontend certificate viewing.
+The verification page distinguishes signature validity from certificate
+lifecycle status. A revoked certificate may have a valid signature but
+must not be presented as currently valid.
 
-The existence of these features does not alone establish that every security and failure case has been validated. The next milestone is to prove the integrated workflow through API checks and a small automated integration suite.
+**Important limitation:** ID-based verification validates the official
+database record. It does not automatically verify the contents of an
+uploaded PDF or printed certificate. The verifier must compare the
+document they received against the official details shown by Credence.
+Automated PDF-content verification is not yet implemented.
 
-## 6. Next Phase
+## 5. Verification Security Controls
 
-### Priority 1 — End-to-End Validation
+Implemented/configured controls include: - Configurable per-IP request
+limiting for the public verification endpoint. - HTTP `429` responses
+when the configured limit is exceeded. - `Retry-After` support. -
+Shared-secret authentication for trusted client-IP forwarding from the
+frontend proxy. - Server-side student ID masking. - Configurable public
+certificate-detail visibility. - `Cache-Control: no-store` for
+verification responses.
 
-- Issue a certificate as an authorized issuer.
-- Confirm a student or unauthenticated user cannot issue a certificate.
-- Confirm the record is stored in MongoDB.
-- Retrieve the same certificate by its ID.
-- Verify the signature against the original canonical certificate data.
-- Modify certificate data and confirm verification fails.
+The current in-memory rate limiter is suitable for a single-process demo
+environment. It is not a distributed rate limiter and resets when the
+process restarts. A production deployment should use a shared gateway or
+distributed store such as Redis.
 
-### Priority 2 — Independent Verification
+Public certificate-detail visibility should remain disabled until the
+institution approves disclosure of student information.
 
-Implement and validate a verification workflow that does not trust the frontend's displayed signature status. It should use the persisted certificate data, canonicalization rules, and the correct public key.
+## 6. End-to-End Architecture
 
-### Priority 3 — Certificate Lifecycle
+### Certificate issuance
 
-Introduce certificate status and revocation support so a cryptographically valid certificate can still be reported as revoked or otherwise invalidated.
+1.  The user authenticates through Google.
+2.  The backend validates identity and institutional requirements.
+3.  M2 checks whether the user has issuer permissions.
+4.  M5 validates and canonicalizes the certificate.
+5.  M3 signs the canonical bytes using Ed25519.
+6.  M4 persists the certificate and signature metadata in MongoDB.
+7.  The frontend displays the issued certificate.
 
-### Priority 4 — Security Hardening
+### Certificate verification
 
-Improve key management, audit logging, error handling, and API validation. Ensure role enforcement, signing-key protection, and database constraints are applied consistently.
+1.  A third party enters a Certificate ID or opens a direct verification
+    link.
+2.  The backend retrieves the official certificate record from MongoDB.
+3.  The stored certificate is reconstructed and canonicalized.
+4.  M3 verifies the signature using the appropriate trusted public key.
+5.  The backend checks the certificate lifecycle status.
+6.  The API returns the verification outcome and, when enabled, verified
+    certificate details.
+7.  The verifier compares the presented document with the official
+    record.
 
-### Priority 5 — Documentation and Integration
+## 7. Current Project Status
 
-Keep the module READMEs, API contracts, environment configuration, and repository interfaces aligned with the final integrated implementation.
+The team has implemented the core authentication, RBAC, certificate
+issuance, digital signing, MongoDB persistence, certificate lifecycle
+management, public ID-based verification, verification middleware, and
+corresponding frontend interfaces.
 
-## 7. Development Principles
+The public verification page displays official certificate details when
+public detail visibility is enabled. The admin RBAC interface is also
+implemented.
 
-- Use the shared FastAPI application.
-- Keep authentication, authorization, cryptography, certificate-domain logic, and database persistence separated by responsibility.
-- Use repository interfaces for database operations.
-- Enforce authorization on the backend.
-- Keep private keys and environment secrets out of source control.
-- Validate signatures against canonical certificate bytes rather than formatted frontend output.
-- Update documentation when implementation contracts change.
-- Prioritize meaningful integration checks over large, redundant test suites.
+**Implementation status does not by itself establish that every security
+and failure case has passed testing.** End-to-end, tampering,
+authorization, proxy-trust, rate-limit, and privacy checks remain part
+of final validation.
+
+## 8. Remaining Work and Next Phase
+
+### Priority 1 --- End-to-End and Security Validation
+
+-   Issue a certificate as an authorized issuer.
+-   Confirm students and unauthenticated users cannot issue
+    certificates.
+-   Confirm the record is persisted and can be retrieved by ID.
+-   Verify the signature against persisted canonical certificate data.
+-   Modify each signed field and confirm verification fails.
+-   Test revoked, missing, malformed, and unverifiable certificate
+    cases.
+-   Test rate limiting and trusted proxy IP handling.
+
+### Priority 2 --- Deployment and Privacy Readiness
+
+-   Confirm institutional approval before enabling public certificate
+    details.
+-   Review which student fields may be disclosed publicly.
+-   Keep private keys, proxy secrets, and environment files out of
+    source control.
+-   Confirm production configuration and error handling.
+
+### Priority 3 --- Future Enhancements
+
+-   QR-code-based access to the public verification result page.
+-   Automated PDF/document-content verification.
+-   Stronger audit logging and production key-management procedures.
+-   Distributed rate limiting for multi-instance deployments.
+
+## 9. Development Principles
+
+-   Use the shared FastAPI application.
+-   Keep authentication, authorization, cryptography, certificate-domain
+    logic, and persistence separated by responsibility.
+-   Use repository interfaces for database operations.
+-   Enforce authorization on the backend.
+-   Verify signatures against canonical certificate bytes, not formatted
+    frontend output.
+-   Never commit private keys, `.env` files, or proxy secrets.
+-   Keep API contracts, tests, and documentation aligned with the
+    implementation.
+-   Distinguish implemented functionality from functionality that has
+    passed end-to-end validation.
